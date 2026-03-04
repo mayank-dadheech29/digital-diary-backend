@@ -1,0 +1,16 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+sqlalchemy>=2.0.30
+asyncpg>=0.29.0
+pydantic-settings>=2.2.1
+python-dotenv>=1.0.1
+# AI & DSPy
+dspy-ai>=2.4.0
+google-genai>=0.5.0
+openai>=1.30.0
+
+# Database Utilities
+pgvector>=0.2.0
+alembic>=1.13.0
+pyjwt>=2.8.0
+httpx>=0.27.0

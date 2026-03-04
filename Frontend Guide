@@ -1,0 +1,154 @@
+# Frontend Integration Guide: Notes & Transactions
+
+This guide details how to integrate the **Notes (Entries)** and **Len-Den (Transactions)** features into the frontend application.
+
+## Base URL
+Ensure all requests are prefixed with your API base URL (e.g., `http://localhost:8000`).
+All requests must include the `Authorization: Bearer <token>` header.
+
+---
+
+## 1. Notes API (Diary Entries)
+**Endpoint**: `/api/v1/entries`
+
+### 1.1 Create a Note
+**POST** `/api/v1/entries/`
+
+Create a new diary entry, optionally linking it to one or more contacts.
+
+**Request Body (`EntryCreate`):**
+```json
+{
+  "title": "Lunch with Client",         // Optional: Title of the note
+  "content": "Discussed Q1 roadmap...", // Required: The main text body
+  "images": [                           // Optional: List of image URLs
+    "https://example.com/photo1.jpg"
+  ],
+  "contact_ids": [                      // Optional: List of Contact UUIDs
+    "a1b2c3d4-e5f6-7890-1234-567890abcdef"
+  ]
+}
+```
+
+**Response (`EntryResponse`):**
+```json
+{
+  "id": 101,
+  "user_id": "...",
+  "title": "Lunch with Client",
+  "content": "Discussed Q1 roadmap...",
+  "images": [...],
+  "created_at": "2024-03-15T12:00:00Z",
+  "contacts": [                         // Expanded contact details
+    {
+      "id": "a1b2c3d4...",
+      "full_name": "Alice Smith",
+      "avatar_url": "..."
+    }
+  ]
+}
+```
+
+### 1.2 List Notes
+**GET** `/api/v1/entries/?skip=0&limit=20`
+
+Returns a list of notes, sorted by `created_at` (newest first).
+
+### 1.3 Get Note Details
+**GET** `/api/v1/entries/{id}`
+
+Returns a single note with its linked contacts.
+
+### 1.4 Update Note
+**PATCH** `/api/v1/entries/{id}`
+
+Update fields using `EntryUpdate` schema.
+- **Replacing Contacts**: Providing `contact_ids` will **replace** the existing list of linked contacts.
+
+```json
+{
+  "content": "Updated content...",
+  "contact_ids": [] // Passing empty list removes all contact links
+}
+```
+
+### 1.5 Delete Note
+**DELETE** `/api/v1/entries/{id}`
+
+---
+
+## 2. Len-Den (Transactions) API
+**Endpoint**: `/api/v1/transactions`
+
+This feature tracks "Payables" (I owe) and "Receivables" (They owe) with deadlines.
+
+### 2.1 Create Transaction
+**POST** `/api/v1/transactions/`
+
+**Request Body (`TransactionCreate`):**
+```json
+{
+  "type": "PAYABLE",                 // Required: "PAYABLE" or "RECEIVABLE"
+  "amount": 500.50,                  // Required: Amount
+  "currency": "INR",                 // Optional: Default "INR"
+  "due_date": "2024-04-01T10:00:00", // Required: Deadline ISO string
+  "reminder_at": "2024-03-30T09:00:00", // Optional: Reminder notification time
+  "contact_id": "uuid-...",          // Required: Who is this with?
+  "description": "Dinner Bill Split",// Optional: Note
+  "related_entry_id": 101            // Optional: Link to a specific Note ID
+}
+```
+
+**Response (`TransactionResponse`):**
+```json
+{
+  "id": "uuid-...",
+  "status": "PENDING",               // Default status
+  "type": "PAYABLE",
+  "amount": 500.50,
+  "due_date": "2024-04-01T10:00:00",
+  ...
+}
+```
+
+### 2.2 Dashboard Summary
+**GET** `/api/v1/transactions/summary`
+
+Use this to show the "Total I Owe" and "Total Owed to Me" cards.
+
+**Response:**
+```json
+{
+  "total_payable": 1200.0,
+  "total_receivable": 450.0,
+  "net_balance": -750.0      // (Receivable - Payable)
+}
+```
+
+### 2.3 List Transactions
+**GET** `/api/v1/transactions/`
+
+Supports filtering and sorting (automatically sorted by due date ascending).
+
+**Query Parameters:**
+- `type`: `PAYABLE` or `RECEIVABLE`
+- `status`: `PENDING` or `COMPLETED`
+- `contact_id`: Filter by specific contact
+
+**Example:** `GET /api/v1/transactions/?type=PAYABLE&status=PENDING` -> Shows all outstanding debts.
+
+### 2.4 Update Transaction (Settle)
+**PATCH** `/api/v1/transactions/{id}`
+
+Use this to mark a transaction as paid/completed or change the due date.
+
+**Mark as Completed:**
+```json
+{
+  "status": "COMPLETED"
+}
+```
+*Note: This automatically sets the `completed_at` timestamp on the server.*
+
+### 2.5 Delete Transaction
+**DELETE** `/api/v1/transactions/{id}`

@@ -1,0 +1,47 @@
+services:
+  # 1. THE VAULT: PostgreSQL + pgvector
+  db:
+    image: pgvector/pgvector:pg16 # Staying with official image locally
+    container_name: diary-db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: DDyryEU_IND-ooumj123home_router # Local dev password
+      POSTGRES_DB: digital_diary
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - db-bridge
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d digital_diary"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. THE GATEKEEPER: Your Python API
+  app:
+    build: .
+    container_name: diary-api
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    networks:
+      - db-bridge
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://admin:DDyryEU_IND-ooumj123home_router@diary-db:5432/digital_diary
+      - AI_PROVIDER=google
+    env_file:
+      - .env
+
+networks:
+  db-bridge:
+    driver: bridge
+
+volumes:
+  postgres_data:
