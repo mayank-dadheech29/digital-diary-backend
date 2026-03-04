@@ -54,6 +54,8 @@ cover/
 
 # Environments
 .env
+.env.prod
+.env.prod.example
 .env.example
 .venv
 env/
