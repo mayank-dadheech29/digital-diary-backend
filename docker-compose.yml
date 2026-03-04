@@ -32,8 +32,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "8000:8000"
+    # Removed port 8000 exposure to public, Nginx will proxy to it internally
     networks:
       - db-bridge
     environment:
@@ -45,6 +44,32 @@ services:
       resources:
         limits:
           memory: 2G
+
+  # 3. THE PROXY: Nginx
+  nginx:
+    image: nginx:latest
+    container_name: diary-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      - app
+    networks:
+      - db-bridge
+
+  # 4. THE CERTIFICATE: Certbot
+  certbot:
+    image: certbot/certbot:latest
+    container_name: diary-certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 networks:
   db-bridge:
