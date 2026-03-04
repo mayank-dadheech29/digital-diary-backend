@@ -1,22 +1,26 @@
 services:
   # 1. THE VAULT: PostgreSQL + pgvector
   db:
-    image: pgvector/pgvector:pg16 # Staying with official image locally
+    image: ankane/pgvector:latest
     container_name: diary-db
+    restart: always
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: DDyryEU_IND-ooumj123home_router # Local dev password
-      POSTGRES_DB: digital_diary
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-digital_diary}
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 4G
     networks:
       - db-bridge
-    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d digital_diary"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-digital_diary}"]
+      interval: 10s
       timeout: 5s
       retries: 5
 
@@ -24,20 +28,23 @@ services:
   app:
     build: .
     container_name: diary-api
+    restart: always
     depends_on:
       db:
         condition: service_healthy
     ports:
       - "8000:8000"
-    volumes:
-      - .:/app
     networks:
       - db-bridge
     environment:
-      - DATABASE_URL=postgresql+asyncpg://admin:DDyryEU_IND-ooumj123home_router@diary-db:5432/digital_diary
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-digital_diary}
       - AI_PROVIDER=google
     env_file:
       - .env
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
 networks:
   db-bridge:
