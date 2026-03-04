@@ -13,14 +13,16 @@ EMAIL=$1
 
 echo "Requesting SSL certificate for $DOMAIN..."
 
-# Create the directories if they don't exist
-mkdir -p certbot/conf
-mkdir -p certbot/www
+echo "Stopping Nginx temporarily to free up Port 80..."
+docker compose stop nginx
 
-# Run certbot to get the certificate
-docker compose run --rm certbot certonly --webroot --webroot-path=/var/www/certbot \
+# Run certbot in standalone mode (binds to Port 80 temporarily)
+docker compose run --rm --entrypoint "certbot" -p 80:80 certbot certonly --standalone \
     --email $EMAIL --agree-tos --no-eff-email \
     -d $DOMAIN
+
+echo "Starting Nginx again..."
+docker compose up -d nginx
 
 echo "Reloading Nginx to apply changes..."
 docker compose exec nginx nginx -s reload
