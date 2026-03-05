@@ -42,6 +42,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             )
 
     if response.status_code != 200:
+        print(f"DEBUG: Supabase auth check failed with status {response.status_code}")
         # 401 from Supabase becomes 401 from us
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -51,6 +52,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     
     user_data = response.json()
     user_id = user_data.get("id")
+    email = user_data.get("email")
+    
+    print(f"DEBUG: Authenticated user {email} (ID: {user_id})")
     
     if not user_id:
         raise HTTPException(
@@ -58,4 +62,27 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             detail="User ID not found in token",
         )
         
+    # Sync user with local DB
+    from app.core.database import AsyncSessionLocal
+    from app.models.user import User
+    from sqlalchemy.dialects.postgresql import insert
+    
+    if AsyncSessionLocal:
+        async with AsyncSessionLocal() as session:
+            try:
+                # Upsert user record
+                stmt = insert(User).values(
+                    id=user_id,
+                    email=email,
+                ).on_conflict_do_update(
+                    index_elements=['id'],
+                    set_={'email': email}
+                )
+                await session.execute(stmt)
+                await session.commit()
+                print(f"DEBUG: Synced user {email} to local DB.")
+            except Exception as e:
+                # Log error but don't fail auth for now
+                print(f"DEBUG: Error syncing user to local DB: {e}")
+
     return UUID(user_id)

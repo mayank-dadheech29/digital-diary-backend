@@ -16,6 +16,7 @@ load_dotenv()
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.core.database import Base
+from app.models.user import User
 from app.models.entry import Entry
 from app.models.contact import Contact
 from app.models.interaction import Interaction
