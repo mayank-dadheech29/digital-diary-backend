@@ -30,8 +30,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ~/digital-diary
-            # Pull latest images if any, but since we are building locally, we use build
-            docker compose build
-            docker compose up -d
-            # Optional: Run migrations
+            # Use --profile prod to include Nginx and Certbot
+            docker compose --profile prod build
+            docker compose --profile prod up -d
+            # Run migrations
             docker compose exec -T app alembic upgrade head
