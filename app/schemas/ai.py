@@ -17,6 +17,7 @@ class ActionExtractedData(BaseModel):
     organization: Optional[str] = Field(None, description="The organization or company mentioned, if any")
     job_title: Optional[str] = Field(None, description="The job title or role mentioned, if any")
     address: Optional[str] = Field(None, description="The location or address mentioned, if any")
+    custom_fields: Optional[dict[str, str]] = Field(None, description="Any other key-value pair details mentioned (like IPS Batch, Interests, Met At, etc)")
 
 class ActionParseResponse(BaseModel):
     intent: Literal["CREATE_CONTACT", "CREATE_ENTRY", "CREATE_TRANSACTION", "UNKNOWN"] = Field(
