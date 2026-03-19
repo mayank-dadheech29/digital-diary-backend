@@ -28,6 +28,7 @@ class LLMParsedAction(BaseModel):
     organization: str = Field(default="", description="The organization or company mentioned, or empty string")
     job_title: str = Field(default="", description="The job title or role mentioned, or empty string")
     address: str = Field(default="", description="The location or address mentioned, or empty string")
+    custom_fields: dict[str, str] = Field(default_factory=dict, description="A dictionary of any other dynamic or custom details mentioned (e.g. {'IPS Batch': '2001', 'Interests': 'Golf', 'Met At': 'Conference'})")
 
 class ActionExtractionSignature(dspy.Signature):
     """Parse a natural language command into structured intent and entities for a personal CRM app.
@@ -73,6 +74,7 @@ async def parse_action(
                 organization=parsed.organization if parsed.organization else None,
                 job_title=parsed.job_title if parsed.job_title else None,
                 address=parsed.address if parsed.address else None,
+                custom_fields=parsed.custom_fields if parsed.custom_fields else None,
             )
             
             intent_val = parsed.intent if parsed.intent in ["CREATE_CONTACT", "CREATE_ENTRY", "CREATE_TRANSACTION"] else "UNKNOWN"
