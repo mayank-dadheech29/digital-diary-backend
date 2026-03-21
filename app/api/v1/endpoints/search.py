@@ -407,7 +407,7 @@ async def run_structured_search(
             lexical.append(kw_clause)
 
         # Only force lexical searches in structured mode if we haven't already explicitly satisfied the search via direct amount/numeric intent filters to prevent '1050' AND 'title contains 1050' collapsing query results to zero.
-        if lexical and not (f and (f.amount_gt is not None or f.amount_lt is not None or f.created_after)):
+        if lexical and not (f and f.created_after):
             stmt = stmt.where(or_(*lexical))
 
         capped_limit = f.limit if (f and f.limit) else limit
@@ -437,7 +437,7 @@ async def run_structured_search(
             lexical.append(kw_clause)
 
         # Only force lexical searches in structured mode if we haven't already explicitly satisfied the search via direct amount/numeric intent filters to prevent '1050' AND 'title contains 1050' collapsing query results to zero.
-        if lexical and not (f and (f.amount_gt is not None or f.amount_lt is not None or f.created_after)):
+        if lexical and not (f and f.created_after):
             stmt = stmt.where(or_(*lexical))
 
         capped_limit = f.limit if (f and f.limit) else limit
