@@ -23,6 +23,7 @@ from app.models.interaction import Interaction
 from app.models.task import Task
 from app.models.entry_contact import EntryContact
 from app.models.transaction import Transaction
+from app.models.meeting_chunk import MeetingChunk
 
 config = context.config
 

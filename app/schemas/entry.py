@@ -25,6 +25,7 @@ class EntryResponse(EntryBase):
     user_id: UUID
     created_at: datetime
     sentiment_score: Optional[float] = None
+    entry_type: str
     contacts: List[ContactResponse] = Field(default_factory=list)
 
     class Config:

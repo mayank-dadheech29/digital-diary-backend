@@ -103,3 +103,176 @@ async def parse_action(
         extracted_data=extracted_data,
         resolved_contact_id=resolved_id
     )
+
+from fastapi import UploadFile, File, Form, HTTPException
+import httpx
+import os
+from app.models.meeting_chunk import MeetingChunk
+from app.models.entry import Entry
+from app.models.entry_contact import EntryContact
+from app.models.transaction import Transaction
+
+async def transcribe_with_groq(file_bytes: bytes, filename: str) -> str:
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    if not groq_api_key:
+        raise Exception("GROQ_API_KEY not set. Cannot transcribe audio.")
+    
+    url = "https://api.groq.com/openai/v1/audio/transcriptions"
+    headers = {
+        "Authorization": f"Bearer {groq_api_key}"
+    }
+    
+    files = {
+        "file": (filename, file_bytes, "audio/m4a")
+    }
+    data = {
+        "model": "whisper-large-v3",
+        "response_format": "json",
+        "prompt": "यह हिंदी और English में है। (This is in Hindi and English)"
+    }
+    
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(url, headers=headers, files=files, data=data)
+        if response.status_code != 200:
+            raise Exception(f"Groq transcription failed: {response.text}")
+        return response.json().get("text", "")
+
+@router.post("/transcribe-chunk")
+async def transcribe_chunk(
+    session_id: UUID = Form(...),
+    chunk_index: int = Form(...),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    audio_bytes = await file.read()
+    try:
+        transcript = await transcribe_with_groq(audio_bytes, file.filename)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    chunk = MeetingChunk(
+        user_id=user_id,
+        session_id=session_id,
+        chunk_index=chunk_index,
+        transcript_text=transcript
+    )
+    db.add(chunk)
+    await db.commit()
+    
+    return {"status": "success", "transcript": transcript}
+
+class ExtractedTask(BaseModel):
+    title: str = Field(description="Title of the task or commitment")
+    type: str = Field(description="PAYABLE (I owe them) or RECEIVABLE (They owe me)")
+    category: str = Field(description="FINANCIAL, ITEM, TASK, or OTHER")
+    amount: float = Field(default=0.0)
+
+class MeetingSummaryAction(BaseModel):
+    executive_summary: str = Field(description="A concise 3-bullet recap of the meeting")
+    extracted_tasks: list[ExtractedTask] = Field(default_factory=list, description="List of promises, tasks, or financial debts mentioned. Leave empty if none.")
+
+class MeetingSummarizationSignature(dspy.Signature):
+    """Summarize a meeting transcript and extract len-den actionable commitments from it."""
+    transcript: str = dspy.InputField(desc="The raw audio transcript")
+    parsed: MeetingSummaryAction = dspy.OutputField()
+
+class SummarizeMeetingRequest(BaseModel):
+    session_id: UUID
+    contact_id: UUID
+
+class MeetingSummaryResponse(BaseModel):
+    entry_id: int
+    summary: str
+
+@router.post("/summarize-meeting", response_model=MeetingSummaryResponse)
+async def summarize_meeting(
+    payload: SummarizeMeetingRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(get_current_user)
+):
+    stmt = select(MeetingChunk).where(
+        MeetingChunk.session_id == payload.session_id,
+        MeetingChunk.user_id == user_id
+    ).order_by(MeetingChunk.chunk_index.asc())
+    
+    result = await db.execute(stmt)
+    chunks = result.scalars().all()
+    
+    if not chunks:
+        raise HTTPException(status_code=404, detail="No audio chunks found for this session")
+        
+    full_transcript = " ".join([c.transcript_text for c in chunks])
+    
+    ai_service = request.app.state.ai
+    if not ai_service.lm:
+        raise HTTPException(status_code=500, detail="AI provider not configured")
+        
+    try:
+        with dspy.settings.context(lm=ai_service.lm):
+            predictor = dspy.Predict(MeetingSummarizationSignature)
+            ai_res = predictor(transcript=full_transcript)
+            parsed: MeetingSummaryAction = ai_res.parsed
+            
+            executive_summary = parsed.executive_summary
+            tasks = parsed.extracted_tasks
+    except Exception as e:
+        print(f"Summarization AI failed: {e}")
+        executive_summary = "AI Summarization failed. Raw Transcript:\n\n" + full_transcript
+        tasks = []
+
+    # 1. Fetch Contact
+    contact_stmt = select(Contact).where(Contact.id == payload.contact_id, Contact.user_id == user_id)
+    contact = (await db.execute(contact_stmt)).scalar_one_or_none()
+
+    # 2. Create the Entry (Note)
+    final_content = executive_summary
+    
+    new_entry = Entry(
+        user_id=user_id,
+        content=final_content,
+        title="Audio Meeting Summary",
+        entry_type="MEETING_SUMMARY"
+    )
+    db.add(new_entry)
+    await db.flush() # Get new_entry.id
+    
+    # Associate Entry with Contact explicitly via association table
+    # This prevents SQLAlchemy from attempting a synchronous lazy load on bidirectional relationships
+    if contact:
+        new_ec = EntryContact(entry_id=new_entry.id, contact_id=contact.id)
+        db.add(new_ec)
+    
+    # 2. Extract Tasks into Transactions (Len-Den)
+    from datetime import datetime
+    from sqlalchemy.sql import func
+    
+    for t in tasks:
+        # Validate constraint types
+        valid_type = t.type if t.type in ["PAYABLE", "RECEIVABLE"] else "PAYABLE"
+        valid_cat = t.category if t.category in ["FINANCIAL", "ITEM", "TASK", "OTHER"] else "TASK"
+        
+        new_txn = Transaction(
+            user_id=user_id,
+            contact_id=payload.contact_id,
+            type=valid_type,
+            category=valid_cat,
+            title=t.title,
+            amount=t.amount,
+            status="PENDING",
+            due_date=func.now(), # Default
+            related_entry_id=new_entry.id
+        )
+        db.add(new_txn)
+        
+    # 3. Cleanup chunks
+    for c in chunks:
+        await db.delete(c)
+        
+    await db.commit()
+    
+    return MeetingSummaryResponse(
+        entry_id=new_entry.id,
+        summary=executive_summary
+    )

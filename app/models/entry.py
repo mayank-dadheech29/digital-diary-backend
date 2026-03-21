@@ -16,6 +16,7 @@ class Entry(Base):
     images = Column(ARRAY(Text), default=[])
     audio_url = Column(Text)
     sentiment_score = Column(Float)
+    entry_type = Column(String, default="NOTE", server_default="NOTE", nullable=False)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     # Vector embedding for semantic search
